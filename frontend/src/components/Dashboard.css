@@ -1,0 +1,188 @@
+.dashboard {}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 0.4rem;
+}
+
+.stat-value {
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.stat-icon {
+  position: absolute;
+  top: 1rem;
+  right: 1.1rem;
+  font-size: 1.4rem;
+  opacity: 0.25;
+}
+
+.stat-open     { border-top: 3px solid var(--status-open); }
+.stat-critical { border-top: 3px solid var(--critical); }
+.stat-resolved { border-top: 3px solid var(--status-res); }
+.stat-total    { border-top: 3px solid var(--accent); }
+.stat-inv      { border-top: 3px solid var(--status-inv); }
+
+/* Lower section */
+.dashboard-lower {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.recent-card {
+  overflow: hidden;
+  padding: 0;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.card-link {
+  font-size: 0.8rem;
+  color: var(--accent-light);
+}
+
+.recent-table-wrap {
+  overflow-x: auto;
+}
+
+.recent-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.recent-table th {
+  padding: 0.6rem 1rem;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  background: rgba(0,0,0,0.15);
+  border-bottom: 1px solid var(--border);
+}
+.recent-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+.recent-table tr:last-child td { border-bottom: none; }
+
+.clickable-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.clickable-row:hover td { background: var(--bg-card-hover); color: var(--text-primary); }
+
+.id-cell   { color: var(--text-muted); font-family: monospace; }
+.vessel-cell { color: var(--text-primary); font-weight: 500; }
+
+/* Breakdown sidebar */
+.breakdown-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.breakdown-card { padding: 1.25rem 1.5rem; }
+.breakdown-card .card-title { margin-bottom: 1rem; }
+
+.breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.breakdown-label { min-width: 72px; text-align: center; }
+.breakdown-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.breakdown-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+.bar-low      { background: var(--low); }
+.bar-medium   { background: var(--medium); }
+.bar-high     { background: var(--high); }
+.bar-critical { background: var(--critical); }
+.breakdown-count { font-size: 0.8rem; color: var(--text-muted); min-width: 20px; text-align: right; }
+
+.type-list { gap: 0.5rem; }
+.type-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.type-row:last-child { border-bottom: none; }
+.type-name  { font-size: 0.85rem; color: var(--text-secondary); }
+.type-count {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent-light);
+  background: rgba(59,130,246,0.12);
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+@media (max-width: 1200px) {
+  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 900px) {
+  .dashboard-lower { grid-template-columns: 1fr; }
+  .breakdown-col { flex-direction: row; flex-wrap: wrap; }
+  .breakdown-card { flex: 1; min-width: 260px; }
+}
+@media (max-width: 600px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
