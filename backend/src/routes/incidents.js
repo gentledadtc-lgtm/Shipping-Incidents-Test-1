@@ -1,57 +1,72 @@
 const express = require('express');
-const router = express.Router();
-const db = require('../db/database');
+const router  = express.Router();
+const { load, save } = require('../db/database');
 
-// GET /api/incidents/stats  — must come before /:id
+function now() { return new Date().toISOString(); }
+
+function applyFilters(incidents, query) {
+  let list = [...incidents];
+  const { search, severity, status, incident_type, date_from, date_to } = query;
+
+  if (search) {
+    const t = search.toLowerCase();
+    list = list.filter(i =>
+      (i.vessel_name    || '').toLowerCase().includes(t) ||
+      (i.location       || '').toLowerCase().includes(t) ||
+      (i.reported_by    || '').toLowerCase().includes(t) ||
+      (i.description    || '').toLowerCase().includes(t) ||
+      (i.incident_type  || '').toLowerCase().includes(t)
+    );
+  }
+  if (severity)      list = list.filter(i => i.severity === severity);
+  if (status)        list = list.filter(i => i.status === status);
+  if (incident_type) list = list.filter(i => i.incident_type === incident_type);
+  if (date_from)     list = list.filter(i => i.incident_date >= date_from);
+  if (date_to)       list = list.filter(i => i.incident_date <= date_to);
+
+  return list.sort((a, b) =>
+    b.incident_date.localeCompare(a.incident_date) || b.id - a.id
+  );
+}
+
+// GET /api/incidents/stats
 router.get('/stats', (req, res) => {
-  const total    = db.prepare('SELECT COUNT(*) AS n FROM incidents').get().n;
-  const open     = db.prepare("SELECT COUNT(*) AS n FROM incidents WHERE status = 'Open'").get().n;
-  const critical = db.prepare("SELECT COUNT(*) AS n FROM incidents WHERE severity = 'Critical'").get().n;
-  const resolved = db.prepare("SELECT COUNT(*) AS n FROM incidents WHERE status = 'Resolved'").get().n;
-  const underInv = db.prepare("SELECT COUNT(*) AS n FROM incidents WHERE status = 'Under Investigation'").get().n;
+  const { incidents } = load();
 
-  const bySeverity = db.prepare(
-    "SELECT severity, COUNT(*) AS count FROM incidents GROUP BY severity ORDER BY CASE severity WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 ELSE 4 END"
-  ).all();
+  const total    = incidents.length;
+  const open     = incidents.filter(i => i.status === 'Open').length;
+  const critical = incidents.filter(i => i.severity === 'Critical').length;
+  const resolved = incidents.filter(i => i.status === 'Resolved').length;
+  const underInv = incidents.filter(i => i.status === 'Under Investigation').length;
 
-  const byType = db.prepare(
-    "SELECT incident_type, COUNT(*) AS count FROM incidents GROUP BY incident_type ORDER BY count DESC"
-  ).all();
+  const severityOrder = ['Critical','High','Medium','Low'];
+  const bySeverity = severityOrder
+    .map(s => ({ severity: s, count: incidents.filter(i => i.severity === s).length }))
+    .filter(x => x.count > 0);
 
-  const recent = db.prepare(
-    'SELECT * FROM incidents ORDER BY incident_date DESC, id DESC LIMIT 5'
-  ).all();
+  const typeMap = {};
+  incidents.forEach(i => { typeMap[i.incident_type] = (typeMap[i.incident_type] || 0) + 1; });
+  const byType = Object.entries(typeMap)
+    .map(([incident_type, count]) => ({ incident_type, count }))
+    .sort((a, b) => b.count - a.count);
+
+  const recent = [...incidents]
+    .sort((a, b) => b.incident_date.localeCompare(a.incident_date) || b.id - a.id)
+    .slice(0, 5);
 
   res.json({ total, open, critical, resolved, underInv, bySeverity, byType, recent });
 });
 
 // GET /api/incidents
 router.get('/', (req, res) => {
-  const { search, severity, status, incident_type, date_from, date_to } = req.query;
-
-  let sql = 'SELECT * FROM incidents WHERE 1=1';
-  const params = [];
-
-  if (search) {
-    sql += ' AND (vessel_name LIKE ? OR location LIKE ? OR reported_by LIKE ? OR description LIKE ? OR incident_type LIKE ?)';
-    const term = `%${search}%`;
-    params.push(term, term, term, term, term);
-  }
-  if (severity)      { sql += ' AND severity = ?';      params.push(severity); }
-  if (status)        { sql += ' AND status = ?';        params.push(status); }
-  if (incident_type) { sql += ' AND incident_type = ?'; params.push(incident_type); }
-  if (date_from)     { sql += ' AND incident_date >= ?'; params.push(date_from); }
-  if (date_to)       { sql += ' AND incident_date <= ?'; params.push(date_to); }
-
-  sql += ' ORDER BY incident_date DESC, id DESC';
-
-  const incidents = db.prepare(sql).all(...params);
-  res.json(incidents);
+  const { incidents } = load();
+  res.json(applyFilters(incidents, req.query));
 });
 
 // GET /api/incidents/:id
 router.get('/:id', (req, res) => {
-  const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
+  const { incidents } = load();
+  const incident = incidents.find(i => i.id === Number(req.params.id));
   if (!incident) return res.status(404).json({ error: 'Incident not found' });
   res.json(incident);
 });
@@ -68,75 +83,58 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: incident_date, vessel_name, incident_type, location, description, severity, reported_by' });
   }
 
-  const result = db.prepare(`
-    INSERT INTO incidents
-      (incident_date, vessel_name, vessel_type, incident_type, location, coordinates,
-       description, severity, status, reported_by, casualties, damage_estimate, updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
-  `).run(
-    incident_date, vessel_name, vessel_type || null, incident_type,
-    location, coordinates || null, description, severity,
-    status || 'Open', reported_by,
-    casualties !== undefined ? casualties : 0,
-    damage_estimate || null
-  );
-
-  const created = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
-  res.status(201).json(created);
+  const db = load();
+  const incident = {
+    id:              db.nextId++,
+    incident_date,
+    vessel_name,
+    vessel_type:     vessel_type     || null,
+    incident_type,
+    location,
+    coordinates:     coordinates     || null,
+    description,
+    severity,
+    status:          status          || 'Open',
+    reported_by,
+    casualties:      casualties !== undefined ? Number(casualties) : 0,
+    damage_estimate: damage_estimate || null,
+    created_at:      now(),
+    updated_at:      now(),
+  };
+  db.incidents.push(incident);
+  save(db);
+  res.status(201).json(incident);
 });
 
 // PUT /api/incidents/:id
 router.put('/:id', (req, res) => {
-  const existing = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
-  if (!existing) return res.status(404).json({ error: 'Incident not found' });
+  const db = load();
+  const idx = db.incidents.findIndex(i => i.id === Number(req.params.id));
+  if (idx === -1) return res.status(404).json({ error: 'Incident not found' });
 
-  const {
-    incident_date, vessel_name, vessel_type, incident_type,
-    location, coordinates, description, severity, status,
-    reported_by, casualties, damage_estimate
-  } = req.body;
+  const existing = db.incidents[idx];
+  const updated  = {
+    ...existing,
+    ...Object.fromEntries(
+      Object.entries(req.body).filter(([, v]) => v !== undefined)
+    ),
+    id:         existing.id,
+    updated_at: now(),
+  };
+  if (req.body.casualties !== undefined) updated.casualties = Number(req.body.casualties);
 
-  db.prepare(`
-    UPDATE incidents SET
-      incident_date   = ?,
-      vessel_name     = ?,
-      vessel_type     = ?,
-      incident_type   = ?,
-      location        = ?,
-      coordinates     = ?,
-      description     = ?,
-      severity        = ?,
-      status          = ?,
-      reported_by     = ?,
-      casualties      = ?,
-      damage_estimate = ?,
-      updated_at      = datetime('now')
-    WHERE id = ?
-  `).run(
-    incident_date   ?? existing.incident_date,
-    vessel_name     ?? existing.vessel_name,
-    vessel_type     !== undefined ? vessel_type     : existing.vessel_type,
-    incident_type   ?? existing.incident_type,
-    location        ?? existing.location,
-    coordinates     !== undefined ? coordinates     : existing.coordinates,
-    description     ?? existing.description,
-    severity        ?? existing.severity,
-    status          ?? existing.status,
-    reported_by     ?? existing.reported_by,
-    casualties      !== undefined ? casualties      : existing.casualties,
-    damage_estimate !== undefined ? damage_estimate : existing.damage_estimate,
-    req.params.id
-  );
-
-  const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
+  db.incidents[idx] = updated;
+  save(db);
   res.json(updated);
 });
 
 // DELETE /api/incidents/:id
 router.delete('/:id', (req, res) => {
-  const existing = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
-  if (!existing) return res.status(404).json({ error: 'Incident not found' });
-  db.prepare('DELETE FROM incidents WHERE id = ?').run(req.params.id);
+  const db = load();
+  const idx = db.incidents.findIndex(i => i.id === Number(req.params.id));
+  if (idx === -1) return res.status(404).json({ error: 'Incident not found' });
+  db.incidents.splice(idx, 1);
+  save(db);
   res.json({ message: 'Incident deleted successfully' });
 });
 
