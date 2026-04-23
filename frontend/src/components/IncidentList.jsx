@@ -4,29 +4,38 @@ import { fetchIncidents } from '../api/incidents.js';
 import './IncidentList.css';
 
 const INCIDENT_TYPES = [
-  'Collision','Grounding','Fire/Explosion','Flooding','Cargo Damage',
-  'Equipment Failure','Man Overboard','Oil Spill','Navigation Error','Piracy','Other',
+  'Grounding', 'Collision', 'Fire / Explosion', 'Crew Injury', 'Cargo Damage',
+  'Pollution / Spill', 'Loss of Power / Blackout', 'Near Miss', 'Security Incident',
+  'Weather Damage', 'Navigation Incident', 'Equipment Failure',
+  'Environmental / Inspection', 'Other',
 ];
 
-const PAGE_SIZE = 10;
+const STATUSES = [
+  'Submitted', 'DPA Ack.', 'Fleet Mgr Review', 'Mgmt Review', 'Safety Inv.', 'Closed',
+];
 
-function severityClass(s) {
-  return { Low:'low', Medium:'medium', High:'high', Critical:'critical' }[s] || 'medium';
+const FLEETS = ['Fleet A', 'Fleet B', 'Fleet C', 'Fleet D', 'Fleet E'];
+
+const PAGE_SIZE = 15;
+
+function statusBadgeClass(s) {
+  const map = {
+    'Submitted':       'submitted',
+    'DPA Ack.':        'dpaack',
+    'Fleet Mgr Review':'fleetmgr',
+    'Mgmt Review':     'mgmt',
+    'Safety Inv.':     'safety',
+    'Closed':          'closed',
+  };
+  return map[s] || 'submitted';
 }
-function statusClass(s) {
-  if (s === 'Open') return 'open';
-  if (s === 'Under Investigation') return 'inv';
-  if (s === 'Resolved') return 'res';
-  return 'closed';
-}
+
 function formatDate(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-const EMPTY_FILTERS = {
-  search: '', severity: '', status: '', incident_type: '', date_from: '', date_to: '',
-};
+const EMPTY_FILTERS = { search: '', status: '', incident_type: '', fleet: '', date_from: '', date_to: '' };
 
 export default function IncidentList() {
   const [incidents, setIncidents] = useState([]);
@@ -52,19 +61,11 @@ export default function IncidentList() {
     const { name, value } = e.target;
     setFilters(prev => ({ ...prev, [name]: value }));
   }
-
-  function handleApply(e) {
-    e.preventDefault();
-    setApplied(filters);
-  }
-
-  function handleReset() {
-    setFilters(EMPTY_FILTERS);
-    setApplied(EMPTY_FILTERS);
-  }
+  function handleApply(e) { e.preventDefault(); setApplied(filters); }
+  function handleReset() { setFilters(EMPTY_FILTERS); setApplied(EMPTY_FILTERS); }
 
   const totalPages = Math.max(1, Math.ceil(incidents.length / PAGE_SIZE));
-  const paged = incidents.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const paged      = incidents.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="incident-list-page">
@@ -82,32 +83,14 @@ export default function IncidentList() {
           <div className="filter-row">
             <div className="filter-field filter-search">
               <label>Search</label>
-              <input
-                type="text"
-                name="search"
-                value={filters.search}
-                onChange={handleChange}
-                placeholder="Vessel, location, type, reporter…"
-              />
-            </div>
-            <div className="filter-field">
-              <label>Severity</label>
-              <select name="severity" value={filters.severity} onChange={handleChange}>
-                <option value="">All</option>
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-                <option value="Critical">Critical</option>
-              </select>
+              <input type="text" name="search" value={filters.search} onChange={handleChange}
+                placeholder="Vessel, location, charterer, type…" />
             </div>
             <div className="filter-field">
               <label>Status</label>
               <select name="status" value={filters.status} onChange={handleChange}>
                 <option value="">All</option>
-                <option value="Open">Open</option>
-                <option value="Under Investigation">Under Investigation</option>
-                <option value="Resolved">Resolved</option>
-                <option value="Closed">Closed</option>
+                {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div className="filter-field">
@@ -118,16 +101,23 @@ export default function IncidentList() {
               </select>
             </div>
             <div className="filter-field">
-              <label>Date From</label>
+              <label>Fleet</label>
+              <select name="fleet" value={filters.fleet} onChange={handleChange}>
+                <option value="">All Fleets</option>
+                {FLEETS.map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div className="filter-field">
+              <label>Event Date From</label>
               <input type="date" name="date_from" value={filters.date_from} onChange={handleChange} />
             </div>
             <div className="filter-field">
-              <label>Date To</label>
+              <label>Event Date To</label>
               <input type="date" name="date_to" value={filters.date_to} onChange={handleChange} />
             </div>
           </div>
           <div className="filter-actions">
-            <button type="submit" className="btn btn-primary">Apply Filters</button>
+            <button type="submit" className="btn btn-primary">Apply</button>
             <button type="button" className="btn btn-secondary" onClick={handleReset}>Reset</button>
           </div>
         </form>
@@ -151,37 +141,36 @@ export default function IncidentList() {
               <table className="incidents-table">
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Date</th>
+                    <th>#</th>
                     <th>Vessel</th>
+                    <th>Event Date</th>
+                    <th>Report Date</th>
+                    <th>Δ Days</th>
                     <th>Type</th>
                     <th>Location</th>
-                    <th>Severity</th>
+                    <th>Fleet</th>
+                    <th>Charterer</th>
                     <th>Status</th>
-                    <th>Reported By</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {paged.map(inc => (
-                    <tr
-                      key={inc.id}
-                      className="clickable-row"
-                      onClick={() => navigate(`/incidents/${inc.id}`)}
-                    >
+                    <tr key={inc.id} className="clickable-row" onClick={() => navigate(`/incidents/${inc.id}`)}>
                       <td className="id-cell">#{inc.id}</td>
-                      <td className="nowrap">{formatDate(inc.incident_date)}</td>
                       <td className="vessel-cell">{inc.vessel_name}</td>
-                      <td>{inc.incident_type}</td>
+                      <td className="nowrap">{formatDate(inc.date_of_event)}</td>
+                      <td className="nowrap">{formatDate(inc.date_of_reporting)}</td>
+                      <td className="diff-cell">{inc.days_diff != null ? inc.days_diff : '—'}</td>
+                      <td className="type-cell">{inc.incident_type}</td>
                       <td className="location-cell">{inc.location}</td>
-                      <td><span className={`badge badge-${severityClass(inc.severity)}`}>{inc.severity}</span></td>
-                      <td><span className={`badge badge-${statusClass(inc.status)}`}>{inc.status}</span></td>
-                      <td>{inc.reported_by}</td>
+                      <td className="nowrap">{inc.fleet || '—'}</td>
+                      <td>{inc.charterer || '—'}</td>
+                      <td>
+                        <span className={`badge badge-${statusBadgeClass(inc.status)}`}>{inc.status}</span>
+                      </td>
                       <td onClick={e => e.stopPropagation()}>
-                        <Link
-                          to={`/incidents/${inc.id}`}
-                          className="btn btn-secondary btn-sm"
-                        >View</Link>
+                        <Link to={`/incidents/${inc.id}`} className="btn btn-secondary btn-sm">View</Link>
                       </td>
                     </tr>
                   ))}
@@ -189,40 +178,28 @@ export default function IncidentList() {
               </table>
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div className="pagination">
                 <span className="page-info">
                   Page {page} of {totalPages} &nbsp;&middot;&nbsp; {incidents.length} total
                 </span>
                 <div className="page-btns">
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    disabled={page === 1}
-                    onClick={() => setPage(p => p - 1)}
-                  >&#8592; Prev</button>
+                  <button className="btn btn-secondary btn-sm" disabled={page === 1}
+                    onClick={() => setPage(p => p - 1)}>&#8592; Prev</button>
                   {Array.from({ length: totalPages }, (_, i) => i + 1)
                     .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
                     .reduce((acc, p, idx, arr) => {
                       if (idx > 0 && p - arr[idx - 1] > 1) acc.push('…');
-                      acc.push(p);
-                      return acc;
+                      acc.push(p); return acc;
                     }, [])
                     .map((p, i) =>
                       p === '…'
-                        ? <span key={`dot-${i}`} className="page-dot">…</span>
-                        : <button
-                            key={p}
-                            className={`btn btn-sm ${p === page ? 'btn-primary' : 'btn-secondary'}`}
-                            onClick={() => setPage(p)}
-                          >{p}</button>
-                    )
-                  }
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    disabled={page === totalPages}
-                    onClick={() => setPage(p => p + 1)}
-                  >Next &#8594;</button>
+                        ? <span key={`d${i}`} className="page-dot">…</span>
+                        : <button key={p} className={`btn btn-sm ${p === page ? 'btn-primary' : 'btn-secondary'}`}
+                            onClick={() => setPage(p)}>{p}</button>
+                    )}
+                  <button className="btn btn-secondary btn-sm" disabled={page === totalPages}
+                    onClick={() => setPage(p => p + 1)}>Next &#8594;</button>
                 </div>
               </div>
             )}

@@ -1,9 +1,4 @@
-.filter-card {
-  margin-bottom: 1.25rem;
-  padding: 1.25rem 1.5rem;
-}
-
-.filter-form {}
+.filter-card { margin-bottom: 1.25rem; padding: 1.25rem 1.5rem; }
 
 .filter-row {
   display: flex;
@@ -16,106 +11,87 @@
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  min-width: 140px;
+  min-width: 130px;
 }
 .filter-search { flex: 2; min-width: 220px; }
 
 .filter-field label {
   font-size: 0.7rem;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .filter-field input,
 .filter-field select {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-light);
+  background: #fff;
+  border: 1px solid var(--border2);
   border-radius: 6px;
   padding: 0.45rem 0.75rem;
   font-size: 0.875rem;
-  color: var(--text-primary);
+  color: var(--text);
   outline: none;
   transition: border-color 0.15s;
   width: 100%;
 }
 .filter-field input:focus,
-.filter-field select:focus { border-color: var(--accent); }
-.filter-field select option { background: var(--bg-secondary); }
+.filter-field select:focus { border-color: var(--navy); }
 
-.filter-actions {
-  display: flex;
-  gap: 0.6rem;
-}
+.filter-actions { display: flex; gap: 0.6rem; }
 
 /* Table */
 .table-card { padding: 0; overflow: hidden; }
-
 .table-wrap { overflow-x: auto; }
 
 .incidents-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: 0.82rem;
 }
 .incidents-table th {
-  padding: 0.65rem 1rem;
+  padding: 0.6rem 0.9rem;
   text-align: left;
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-muted);
-  background: rgba(0,0,0,0.2);
-  border-bottom: 1px solid var(--border);
+  color: rgba(255,255,255,0.85);
+  background: var(--navy);
+  border-bottom: none;
   white-space: nowrap;
 }
 .incidents-table td {
-  padding: 0.8rem 1rem;
+  padding: 0.7rem 0.9rem;
   border-bottom: 1px solid var(--border);
-  color: var(--text-secondary);
+  color: var(--text2);
   vertical-align: middle;
 }
 .incidents-table tr:last-child td { border-bottom: none; }
 
-.incidents-table .clickable-row {
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.incidents-table .clickable-row:hover td {
-  background: var(--bg-card-hover);
-  color: var(--text-primary);
-}
+.clickable-row { cursor: pointer; transition: background 0.1s; }
+.clickable-row:hover td { background: #eff6ff; color: var(--text); }
 
-.id-cell      { color: var(--text-muted); font-family: monospace; font-size: 0.8rem; }
-.vessel-cell  { color: var(--text-primary); font-weight: 500; }
-.location-cell { max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nowrap       { white-space: nowrap; }
-
-.btn-sm { padding: 0.3rem 0.7rem; font-size: 0.78rem; }
+.id-cell       { color: var(--muted); font-family: monospace; font-size: 0.75rem; }
+.vessel-cell   { color: var(--navy); font-weight: 700; white-space: nowrap; }
+.location-cell { max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.type-cell     { white-space: nowrap; }
+.diff-cell     { text-align: center; color: var(--muted); }
+.nowrap        { white-space: nowrap; }
 
 /* Pagination */
 .pagination {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.9rem 1.25rem;
+  padding: 0.85rem 1.25rem;
   border-top: 1px solid var(--border);
   flex-wrap: wrap;
   gap: 0.75rem;
 }
-
-.page-info { font-size: 0.8rem; color: var(--text-muted); }
-
-.page-btns {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  flex-wrap: wrap;
-}
-
-.page-dot { padding: 0 0.25rem; color: var(--text-muted); font-size: 0.85rem; }
+.page-info { font-size: 0.8rem; color: var(--muted); }
+.page-btns { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.page-dot  { padding: 0 0.25rem; color: var(--muted); font-size: 0.85rem; }
 
 @media (max-width: 900px) {
   .filter-row { flex-direction: column; }

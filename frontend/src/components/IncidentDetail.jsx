@@ -3,43 +3,45 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { fetchIncident, deleteIncident } from '../api/incidents.js';
 import './IncidentDetail.css';
 
-function severityClass(s) {
-  return { Low:'low', Medium:'medium', High:'high', Critical:'critical' }[s] || 'medium';
+function statusBadgeClass(s) {
+  const map = {
+    'Submitted':       'submitted',
+    'DPA Ack.':        'dpaack',
+    'Fleet Mgr Review':'fleetmgr',
+    'Mgmt Review':     'mgmt',
+    'Safety Inv.':     'safety',
+    'Closed':          'closed',
+  };
+  return map[s] || 'submitted';
 }
-function statusClass(s) {
-  if (s === 'Open') return 'open';
-  if (s === 'Under Investigation') return 'inv';
-  if (s === 'Resolved') return 'res';
-  return 'closed';
-}
+
 function formatDate(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-GB', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 function formatDateTime(d) {
   if (!d) return '—';
-  const dt = new Date(d + (d.includes('T') ? '' : 'Z'));
-  return dt.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  return new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function DetailField({ label, value, wide }) {
+function Field({ label, value, pre }) {
   return (
-    <div className={`detail-field${wide ? ' detail-field-wide' : ''}`}>
+    <div className="detail-field">
       <span className="detail-label">{label}</span>
-      <span className="detail-value">{value || '—'}</span>
+      <span className={`detail-value${pre ? ' pre' : ''}`}>{value || '—'}</span>
     </div>
   );
 }
 
-export default function IncidentDetail() {
+export default function IncidentDetail({ role }) {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [incident, setIncident] = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
-  const [deleting, setDeleting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [incident, setIncident]     = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
+  const [deleting, setDeleting]     = useState(false);
+  const [confirmDelete, setConfirm] = useState(false);
 
   useEffect(() => {
     fetchIncident(id)
@@ -49,7 +51,7 @@ export default function IncidentDetail() {
   }, [id]);
 
   async function handleDelete() {
-    if (!confirmDelete) { setConfirmDelete(true); return; }
+    if (!confirmDelete) { setConfirm(true); return; }
     setDeleting(true);
     try {
       await deleteIncident(id);
@@ -57,17 +59,15 @@ export default function IncidentDetail() {
     } catch (e) {
       setError(e.message);
       setDeleting(false);
-      setConfirmDelete(false);
+      setConfirm(false);
     }
   }
 
-  if (loading) return (
-    <div className="loading-state"><div className="spinner" /><span>Loading incident…</span></div>
-  );
-  if (error) return (
-    <div className="error-state"><span className="error-icon">&#9888;</span><span>{error}</span><Link to="/incidents" className="btn btn-secondary">Back to List</Link></div>
-  );
+  if (loading) return <div className="loading-state"><div className="spinner" /><span>Loading…</span></div>;
+  if (error)   return <div className="error-state"><span className="error-icon">&#9888;</span><span>{error}</span><Link to="/incidents" className="btn btn-secondary">Back</Link></div>;
   if (!incident) return null;
+
+  const isVetting = role === 'vetting';
 
   return (
     <div className="incident-detail-page">
@@ -77,68 +77,97 @@ export default function IncidentDetail() {
         <span className="bc-sep">›</span>
         <Link to="/incidents">Incidents</Link>
         <span className="bc-sep">›</span>
-        <span>#{incident.id}</span>
+        <span>#{incident.id} — {incident.vessel_name}</span>
       </nav>
 
       {/* Header */}
       <div className="detail-header card">
         <div className="detail-header-main">
-          <div className="detail-id">Incident #{incident.id}</div>
+          <div className="detail-id">#{incident.id}</div>
           <h1 className="detail-vessel">{incident.vessel_name}</h1>
           <div className="detail-meta">
-            <span>{incident.vessel_type || 'Vessel'}</span>
-            <span className="meta-sep">·</span>
             <span>{incident.incident_type}</span>
             <span className="meta-sep">·</span>
-            <span>{formatDate(incident.incident_date)}</span>
+            <span>{incident.location}</span>
+            {incident.fleet && <><span className="meta-sep">·</span><span>{incident.fleet}</span></>}
+            <span className="meta-sep">·</span>
+            <span>Event: {formatDate(incident.date_of_event)}</span>
           </div>
         </div>
         <div className="detail-header-badges">
-          <span className={`badge badge-${severityClass(incident.severity)} badge-lg`}>
-            {incident.severity}
-          </span>
-          <span className={`badge badge-${statusClass(incident.status)} badge-lg`}>
+          <span className={`badge badge-${statusBadgeClass(incident.status)} badge-lg`}>
             {incident.status}
           </span>
+          {incident.oil_informed === 'Yes' && (
+            <span className="badge badge-oil">&#9993; Oil Major Notified</span>
+          )}
         </div>
       </div>
 
-      {/* Main content */}
+      {/* Body */}
       <div className="detail-body">
         <div className="detail-main">
-          {/* Location */}
+
+          {/* Cols 1–10: Core details */}
           <div className="card detail-section">
-            <h2 className="section-heading">&#127758;&nbsp; Location</h2>
+            <h2 className="section-heading">Initial Notification — Cols 1–10</h2>
             <div className="detail-grid">
-              <DetailField label="Location" value={incident.location} />
-              {incident.coordinates && (
-                <DetailField label="Coordinates" value={incident.coordinates} />
-              )}
+              <Field label="1. Vessel Name"       value={incident.vessel_name} />
+              <Field label="2. Date of Event"     value={formatDate(incident.date_of_event)} />
+              <Field label="3. Date of Reporting" value={formatDate(incident.date_of_reporting)} />
+              <Field label="4. Days Difference"   value={incident.days_diff != null ? `${incident.days_diff} day${incident.days_diff === 1 ? '' : 's'}` : '—'} />
+              <Field label="5. Type of Incident"  value={incident.incident_type} />
+              <Field label="6. Present Location"  value={incident.location} />
+              <Field label="7. Charterer"         value={incident.charterer} />
+              <Field label="8. Cargo Onboard"     value={incident.cargo} />
+              <Field label="9. Last Port / ETD"   value={incident.last_port} />
+              <Field label="10. Next Port / ETA"  value={incident.next_port} />
+              <Field label="Fleet"                value={incident.fleet} />
             </div>
           </div>
 
-          {/* Description */}
+          {/* Cols 11–12: Nature & Action Plan */}
           <div className="card detail-section">
-            <h2 className="section-heading">&#128196;&nbsp; Description</h2>
-            <p className="description-text">{incident.description}</p>
+            <h2 className="section-heading">Nature &amp; Action Plan — Cols 11–12</h2>
+            <div className="text-pair">
+              <div>
+                <div className="detail-label">11. Nature of Event</div>
+                <p className="detail-text">{incident.nature || '—'}</p>
+              </div>
+              <div>
+                <div className="detail-label">12. Action Plan</div>
+                <p className="detail-text">{incident.action_plan || '—'}</p>
+              </div>
+            </div>
           </div>
 
-          {/* Response */}
+          {/* Cols 13–14: Oil Majors (shown to all, editable only by vetting) */}
           <div className="card detail-section">
-            <h2 className="section-heading">&#128270;&nbsp; Response &amp; Impact</h2>
+            <h2 className="section-heading">Oil Major Notification — Cols 13–14</h2>
             <div className="detail-grid">
-              <DetailField label="Reported By" value={incident.reported_by} />
-              <DetailField label="Casualties" value={incident.casualties === 0 ? 'None' : incident.casualties} />
-              <DetailField label="Damage Estimate" value={incident.damage_estimate} />
+              <Field label="13. Oil Major Informed?" value={incident.oil_informed} />
+              <Field label="14. Which Oil Majors"    value={incident.oil_which} />
+            </div>
+          </div>
+
+          {/* Cols 15–16: Follow Up & Status */}
+          <div className="card detail-section">
+            <h2 className="section-heading">Follow Up &amp; Status — Cols 15–16</h2>
+            <div className="detail-grid">
+              <div className="detail-field detail-field-wide">
+                <span className="detail-label">15. Follow Up Messages</span>
+                <p className="detail-text">{incident.follow_up || 'No follow-ups yet.'}</p>
+              </div>
+              <Field label="16. Status" value={incident.status} />
             </div>
           </div>
 
           {/* Record info */}
           <div className="card detail-section">
-            <h2 className="section-heading">&#128336;&nbsp; Record Information</h2>
+            <h2 className="section-heading">Record Information</h2>
             <div className="detail-grid">
-              <DetailField label="Created" value={formatDateTime(incident.created_at)} />
-              <DetailField label="Last Updated" value={formatDateTime(incident.updated_at)} />
+              <Field label="Created"      value={formatDateTime(incident.created_at)} />
+              <Field label="Last Updated" value={formatDateTime(incident.updated_at)} />
             </div>
           </div>
         </div>
@@ -149,67 +178,53 @@ export default function IncidentDetail() {
             <h2 className="sidebar-heading">Quick Info</h2>
             <div className="sidebar-rows">
               <div className="sidebar-row">
-                <span className="sidebar-label">Incident ID</span>
-                <span className="sidebar-value mono">#{incident.id}</span>
-              </div>
-              <div className="sidebar-row">
-                <span className="sidebar-label">Severity</span>
-                <span className={`badge badge-${severityClass(incident.severity)}`}>{incident.severity}</span>
-              </div>
-              <div className="sidebar-row">
                 <span className="sidebar-label">Status</span>
-                <span className={`badge badge-${statusClass(incident.status)}`}>{incident.status}</span>
+                <span className={`badge badge-${statusBadgeClass(incident.status)}`}>{incident.status}</span>
+              </div>
+              <div className="sidebar-row">
+                <span className="sidebar-label">Fleet</span>
+                <span className="sidebar-value">{incident.fleet || '—'}</span>
               </div>
               <div className="sidebar-row">
                 <span className="sidebar-label">Type</span>
                 <span className="sidebar-value">{incident.incident_type}</span>
               </div>
               <div className="sidebar-row">
-                <span className="sidebar-label">Date</span>
-                <span className="sidebar-value">{incident.incident_date}</span>
+                <span className="sidebar-label">Event Date</span>
+                <span className="sidebar-value">{formatDate(incident.date_of_event)}</span>
               </div>
               <div className="sidebar-row">
-                <span className="sidebar-label">Vessel Type</span>
-                <span className="sidebar-value">{incident.vessel_type || '—'}</span>
+                <span className="sidebar-label">Reported</span>
+                <span className="sidebar-value">{formatDate(incident.date_of_reporting)}</span>
+              </div>
+              <div className="sidebar-row">
+                <span className="sidebar-label">Δ Days</span>
+                <span className="sidebar-value">{incident.days_diff != null ? incident.days_diff : '—'}</span>
+              </div>
+              <div className="sidebar-row">
+                <span className="sidebar-label">Oil Major</span>
+                <span className="sidebar-value">{incident.oil_informed || '—'}</span>
               </div>
             </div>
           </div>
 
-          {/* Actions */}
           <div className="card sidebar-card">
             <h2 className="sidebar-heading">Actions</h2>
             <div className="action-btns">
               <Link to={`/incidents/${incident.id}/edit`} className="btn btn-primary action-btn">
                 &#9998;&nbsp; Edit Incident
               </Link>
-              <button
-                className="btn btn-danger action-btn"
-                onClick={handleDelete}
-                disabled={deleting}
-              >
-                {deleting
-                  ? 'Deleting…'
-                  : confirmDelete
-                  ? '&#10006; Confirm Delete'
-                  : '&#128465;&nbsp; Delete Incident'}
+              <button className="btn btn-danger action-btn" onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : confirmDelete ? 'Confirm Delete' : '&#128465;&nbsp; Delete'}
               </button>
               {confirmDelete && !deleting && (
-                <button
-                  className="btn btn-secondary action-btn"
-                  onClick={() => setConfirmDelete(false)}
-                >
-                  Cancel
-                </button>
+                <button className="btn btn-secondary action-btn" onClick={() => setConfirm(false)}>Cancel</button>
               )}
             </div>
-            {confirmDelete && (
-              <p className="delete-warning">This action cannot be undone.</p>
-            )}
+            {confirmDelete && <p className="delete-warning">This action cannot be undone.</p>}
           </div>
 
-          <Link to="/incidents" className="btn btn-secondary action-btn">
-            &#8592;&nbsp; Back to List
-          </Link>
+          <Link to="/incidents" className="btn btn-secondary action-btn">&#8592;&nbsp; Back to List</Link>
         </div>
       </div>
     </div>

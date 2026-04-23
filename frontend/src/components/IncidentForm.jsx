@@ -3,49 +3,67 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { fetchIncident, createIncident, updateIncident } from '../api/incidents.js';
 import './IncidentForm.css';
 
-const VESSEL_TYPES = [
-  'Container Ship','Bulk Carrier','Oil Tanker','Chemical Tanker',
-  'Ferry','Fishing Vessel','Cruise Ship','Cargo Ship','Tug Boat','Other',
+const INCIDENT_TYPES = [
+  'Grounding', 'Collision', 'Fire / Explosion', 'Crew Injury', 'Cargo Damage',
+  'Pollution / Spill', 'Loss of Power / Blackout', 'Near Miss', 'Security Incident',
+  'Weather Damage', 'Navigation Incident', 'Equipment Failure',
+  'Environmental / Inspection', 'Other',
 ];
 
-const INCIDENT_TYPES = [
-  'Collision','Grounding','Fire/Explosion','Flooding','Cargo Damage',
-  'Equipment Failure','Man Overboard','Oil Spill','Navigation Error','Piracy','Other',
+const STATUSES = [
+  'Submitted', 'DPA Ack.', 'Fleet Mgr Review', 'Mgmt Review', 'Safety Inv.', 'Closed',
 ];
+
+const FLEETS = ['Fleet A', 'Fleet B', 'Fleet C', 'Fleet D', 'Fleet E'];
 
 const EMPTY_FORM = {
-  incident_date: '', vessel_name: '', vessel_type: '', incident_type: '',
-  location: '', coordinates: '', description: '', severity: '',
-  status: 'Open', reported_by: '', casualties: '0', damage_estimate: '',
+  vessel_name: '', date_of_event: '', date_of_reporting: '', incident_type: '',
+  location: '', charterer: '', cargo: '', last_port: '', next_port: '',
+  nature: '', action_plan: '', oil_informed: '', oil_which: '',
+  follow_up: '', status: 'Submitted', fleet: '',
 };
 
-export default function IncidentForm() {
-  const { id } = useParams();
-  const isEdit = Boolean(id);
-  const navigate = useNavigate();
+function calcDiff(eventDate, reportDate) {
+  if (!eventDate || !reportDate) return '';
+  const diff = Math.round((new Date(reportDate) - new Date(eventDate)) / 86400000);
+  if (diff < 0) return '';
+  return diff === 0 ? 'Same day' : `${diff} day${diff === 1 ? '' : 's'}`;
+}
 
-  const [form, setForm]       = useState(EMPTY_FORM);
+export default function IncidentForm({ role }) {
+  const { id }    = useParams();
+  const isEdit    = Boolean(id);
+  const navigate  = useNavigate();
+
+  const [form, setForm]       = useState({ ...EMPTY_FORM, date_of_reporting: new Date().toISOString().split('T')[0] });
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState(null);
   const [errors, setErrors]   = useState({});
 
+  const isVetting = role === 'vetting';
+  const oilLocked = !isVetting;
+
   useEffect(() => {
     if (!isEdit) return;
     fetchIncident(id)
       .then(inc => setForm({
-        incident_date:   inc.incident_date   || '',
-        vessel_name:     inc.vessel_name     || '',
-        vessel_type:     inc.vessel_type     || '',
-        incident_type:   inc.incident_type   || '',
-        location:        inc.location        || '',
-        coordinates:     inc.coordinates     || '',
-        description:     inc.description     || '',
-        severity:        inc.severity        || '',
-        status:          inc.status          || 'Open',
-        reported_by:     inc.reported_by     || '',
-        casualties:      String(inc.casualties ?? 0),
-        damage_estimate: inc.damage_estimate || '',
+        vessel_name:       inc.vessel_name       || '',
+        date_of_event:     inc.date_of_event     || '',
+        date_of_reporting: inc.date_of_reporting || '',
+        incident_type:     inc.incident_type     || '',
+        location:          inc.location          || '',
+        charterer:         inc.charterer         || '',
+        cargo:             inc.cargo             || '',
+        last_port:         inc.last_port         || '',
+        next_port:         inc.next_port         || '',
+        nature:            inc.nature            || '',
+        action_plan:       inc.action_plan       || '',
+        oil_informed:      inc.oil_informed      || '',
+        oil_which:         inc.oil_which         || '',
+        follow_up:         inc.follow_up         || '',
+        status:            inc.status            || 'Submitted',
+        fleet:             inc.fleet             || '',
       }))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -59,15 +77,13 @@ export default function IncidentForm() {
 
   function validate() {
     const e = {};
-    if (!form.incident_date)  e.incident_date  = 'Date is required';
-    if (!form.vessel_name.trim()) e.vessel_name = 'Vessel name is required';
-    if (!form.incident_type)  e.incident_type  = 'Incident type is required';
-    if (!form.location.trim()) e.location       = 'Location is required';
-    if (!form.description.trim()) e.description = 'Description is required';
-    if (!form.severity)       e.severity        = 'Severity is required';
-    if (!form.reported_by.trim()) e.reported_by = 'Reporter name is required';
-    const cas = Number(form.casualties);
-    if (isNaN(cas) || cas < 0) e.casualties = 'Must be 0 or more';
+    if (!form.vessel_name.trim())    e.vessel_name      = 'Required';
+    if (!form.date_of_event)         e.date_of_event    = 'Required';
+    if (!form.date_of_reporting)     e.date_of_reporting = 'Required';
+    if (!form.incident_type)         e.incident_type    = 'Required';
+    if (!form.location.trim())       e.location         = 'Required';
+    if (!form.nature.trim())         e.nature           = 'Required';
+    if (!form.action_plan.trim())    e.action_plan      = 'Required';
     return e;
   }
 
@@ -75,23 +91,20 @@ export default function IncidentForm() {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
-
     setSaving(true);
     setError(null);
     try {
-      const payload = {
-        ...form,
-        casualties: Number(form.casualties),
-      };
       const saved = isEdit
-        ? await updateIncident(id, payload)
-        : await createIncident(payload);
+        ? await updateIncident(id, form)
+        : await createIncident(form);
       navigate(`/incidents/${saved.id}`);
     } catch (err) {
       setError(err.message);
       setSaving(false);
     }
   }
+
+  const daysDiff = calcDiff(form.date_of_event, form.date_of_reporting);
 
   if (loading) return (
     <div className="loading-state"><div className="spinner" /><span>Loading incident…</span></div>
@@ -103,7 +116,7 @@ export default function IncidentForm() {
         <div>
           <h1 className="page-title">{isEdit ? 'Edit Incident' : 'Report New Incident'}</h1>
           <p className="page-subtitle">
-            {isEdit ? `Updating record #${id}` : 'Submit a new shipping incident report'}
+            {isEdit ? `Editing record #${id}` : 'Submit a new shipping incident report'}
           </p>
         </div>
         <Link to={isEdit ? `/incidents/${id}` : '/incidents'} className="btn btn-secondary">
@@ -111,144 +124,150 @@ export default function IncidentForm() {
         </Link>
       </div>
 
-      {error && (
-        <div className="form-error-banner">&#9888;&nbsp;{error}</div>
-      )}
+      {error && <div className="form-error-banner">&#9888;&nbsp;{error}</div>}
 
       <form className="incident-form" onSubmit={handleSubmit} noValidate>
-        {/* Section: Vessel Information */}
+
+        {/* ── Section 1–12: Initial Notification ── */}
         <div className="form-section">
-          <h2 className="section-title">Vessel Information</h2>
-          <div className="form-grid">
-            <div className={`form-field${errors.vessel_name ? ' has-error' : ''}`}>
-              <label htmlFor="vessel_name">Vessel Name <span className="required">*</span></label>
-              <input
-                id="vessel_name" name="vessel_name" type="text"
-                value={form.vessel_name} onChange={handleChange}
-                placeholder="e.g. MV Atlantic Star"
-              />
-              {errors.vessel_name && <span className="field-error">{errors.vessel_name}</span>}
-            </div>
-            <div className="form-field">
-              <label htmlFor="vessel_type">Vessel Type</label>
-              <select id="vessel_type" name="vessel_type" value={form.vessel_type} onChange={handleChange}>
-                <option value="">Select type…</option>
-                {VESSEL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+          <div className="form-section-hdr">
+            Initial Notification
+            <span className="sec-badge">Cols 1–12 · Vessel / Fleet Team</span>
+          </div>
+          <div className="form-section-body">
+            <div className="form-grid">
+
+              <div className={`fg${errors.vessel_name ? ' has-error' : ''}`}>
+                <label><span className="col-ref">1.</span> Vessel Name <span className="req">*</span></label>
+                <input name="vessel_name" type="text" value={form.vessel_name} onChange={handleChange} placeholder="e.g. STI Aqua" />
+                {errors.vessel_name && <span className="field-error">{errors.vessel_name}</span>}
+              </div>
+
+              <div className={`fg${errors.date_of_event ? ' has-error' : ''}`}>
+                <label><span className="col-ref">2.</span> Date of Event <span className="req">*</span></label>
+                <input name="date_of_event" type="date" value={form.date_of_event} onChange={handleChange} />
+                {errors.date_of_event && <span className="field-error">{errors.date_of_event}</span>}
+              </div>
+
+              <div className={`fg${errors.date_of_reporting ? ' has-error' : ''}`}>
+                <label><span className="col-ref">3.</span> Date of Reporting <span className="req">*</span></label>
+                <input name="date_of_reporting" type="date" value={form.date_of_reporting} onChange={handleChange} />
+                {errors.date_of_reporting && <span className="field-error">{errors.date_of_reporting}</span>}
+              </div>
+
+              <div className="fg">
+                <label><span className="col-ref">4.</span> Days Difference (auto)</label>
+                <input type="text" value={daysDiff} readOnly className="readonly-field" placeholder="—" />
+              </div>
+
+              <div className={`fg${errors.incident_type ? ' has-error' : ''}`}>
+                <label><span className="col-ref">5.</span> Type of Incident <span className="req">*</span></label>
+                <select name="incident_type" value={form.incident_type} onChange={handleChange}>
+                  <option value="">Select…</option>
+                  {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                {errors.incident_type && <span className="field-error">{errors.incident_type}</span>}
+              </div>
+
+              <div className={`fg${errors.location ? ' has-error' : ''}`}>
+                <label><span className="col-ref">6.</span> Present Location <span className="req">*</span></label>
+                <input name="location" type="text" value={form.location} onChange={handleChange} placeholder="e.g. Cristobal, Panama" />
+                {errors.location && <span className="field-error">{errors.location}</span>}
+              </div>
+
+              <div className="fg">
+                <label><span className="col-ref">7.</span> Charterer</label>
+                <input name="charterer" type="text" value={form.charterer} onChange={handleChange} placeholder="e.g. Chevron / NA" />
+              </div>
+
+              <div className="fg">
+                <label><span className="col-ref">8.</span> Cargo Onboard</label>
+                <input name="cargo" type="text" value={form.cargo} onChange={handleChange} placeholder="e.g. Gasoil / Ballast" />
+              </div>
+
+              <div className="fg">
+                <label><span className="col-ref">9.</span> Last Port &amp; ETD</label>
+                <input name="last_port" type="text" value={form.last_port} onChange={handleChange} placeholder="e.g. Yosu / 18 Feb 2026" />
+              </div>
+
+              <div className="fg">
+                <label><span className="col-ref">10.</span> Next Port &amp; ETA</label>
+                <input name="next_port" type="text" value={form.next_port} onChange={handleChange} placeholder="e.g. Botany Bay / 04 Mar 2026" />
+              </div>
+
+              <div className="fg">
+                <label><span className="col-ref">F.</span> Fleet</label>
+                <select name="fleet" value={form.fleet} onChange={handleChange}>
+                  <option value="">Select…</option>
+                  {FLEETS.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </div>
+
+              <div className="fg fg-full">
+                <label><span className="col-ref">11.</span> Nature of Event <span className="req">*</span></label>
+                <textarea name="nature" value={form.nature} onChange={handleChange} rows={4} placeholder="Describe what happened…" />
+                {errors.nature && <span className="field-error">{errors.nature}</span>}
+              </div>
+
+              <div className="fg fg-full">
+                <label><span className="col-ref">12.</span> Action Plan <span className="req">*</span></label>
+                <textarea name="action_plan" value={form.action_plan} onChange={handleChange} rows={4} placeholder="Steps taken or planned…" />
+                {errors.action_plan && <span className="field-error">{errors.action_plan}</span>}
+              </div>
+
             </div>
           </div>
         </div>
 
-        {/* Section: Incident Details */}
+        {/* ── Section 13–14: Oil Major Notification ── */}
         <div className="form-section">
-          <h2 className="section-title">Incident Details</h2>
-          <div className="form-grid">
-            <div className={`form-field${errors.incident_date ? ' has-error' : ''}`}>
-              <label htmlFor="incident_date">Incident Date <span className="required">*</span></label>
-              <input
-                id="incident_date" name="incident_date" type="date"
-                value={form.incident_date} onChange={handleChange}
-              />
-              {errors.incident_date && <span className="field-error">{errors.incident_date}</span>}
-            </div>
-            <div className={`form-field${errors.incident_type ? ' has-error' : ''}`}>
-              <label htmlFor="incident_type">Incident Type <span className="required">*</span></label>
-              <select id="incident_type" name="incident_type" value={form.incident_type} onChange={handleChange}>
-                <option value="">Select type…</option>
-                {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              {errors.incident_type && <span className="field-error">{errors.incident_type}</span>}
-            </div>
-            <div className={`form-field${errors.severity ? ' has-error' : ''}`}>
-              <label htmlFor="severity">Severity <span className="required">*</span></label>
-              <select id="severity" name="severity" value={form.severity} onChange={handleChange}>
-                <option value="">Select severity…</option>
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-                <option value="Critical">Critical</option>
-              </select>
-              {errors.severity && <span className="field-error">{errors.severity}</span>}
-            </div>
-            <div className="form-field">
-              <label htmlFor="status">Status</label>
-              <select id="status" name="status" value={form.status} onChange={handleChange}>
-                <option value="Open">Open</option>
-                <option value="Under Investigation">Under Investigation</option>
-                <option value="Resolved">Resolved</option>
-                <option value="Closed">Closed</option>
-              </select>
+          <div className="form-section-hdr">
+            Oil Major Notification
+            <span className="sec-badge">Cols 13–14 · Vetting Superintendent</span>
+          </div>
+          <div className="form-section-body">
+            {oilLocked && (
+              <div className="lock-note">
+                &#9888; These fields are filled by the Vetting Superintendent after initial notification.
+              </div>
+            )}
+            <div className="form-grid">
+              <div className="fg">
+                <label><span className="col-ref">13.</span> Oil Major Informed?</label>
+                <select name="oil_informed" value={form.oil_informed} onChange={handleChange} disabled={oilLocked}>
+                  <option value="">Select…</option>
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div className="fg fg-half">
+                <label><span className="col-ref">14.</span> Which Oil Majors</label>
+                <input name="oil_which" type="text" value={form.oil_which} onChange={handleChange}
+                  placeholder="e.g. Chevron, Ampol, BP" disabled={oilLocked} />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Section: Location */}
+        {/* ── Section 15–16: Follow Up & Status ── */}
         <div className="form-section">
-          <h2 className="section-title">Location</h2>
-          <div className="form-grid">
-            <div className={`form-field form-field-wide${errors.location ? ' has-error' : ''}`}>
-              <label htmlFor="location">Location <span className="required">*</span></label>
-              <input
-                id="location" name="location" type="text"
-                value={form.location} onChange={handleChange}
-                placeholder="e.g. Strait of Malacca"
-              />
-              {errors.location && <span className="field-error">{errors.location}</span>}
-            </div>
-            <div className="form-field">
-              <label htmlFor="coordinates">Coordinates (optional)</label>
-              <input
-                id="coordinates" name="coordinates" type="text"
-                value={form.coordinates} onChange={handleChange}
-                placeholder="e.g. 1.28° N, 103.86° E"
-              />
-            </div>
+          <div className="form-section-hdr">
+            Follow Up &amp; Status
+            <span className="sec-badge">Cols 15–16 · All Users</span>
           </div>
-        </div>
-
-        {/* Section: Description */}
-        <div className="form-section">
-          <h2 className="section-title">Description</h2>
-          <div className={`form-field${errors.description ? ' has-error' : ''}`}>
-            <label htmlFor="description">Incident Description <span className="required">*</span></label>
-            <textarea
-              id="description" name="description"
-              value={form.description} onChange={handleChange}
-              rows={5}
-              placeholder="Provide a detailed description of what happened…"
-            />
-            {errors.description && <span className="field-error">{errors.description}</span>}
-          </div>
-        </div>
-
-        {/* Section: Response & Impact */}
-        <div className="form-section">
-          <h2 className="section-title">Response &amp; Impact</h2>
-          <div className="form-grid">
-            <div className={`form-field${errors.reported_by ? ' has-error' : ''}`}>
-              <label htmlFor="reported_by">Reported By <span className="required">*</span></label>
-              <input
-                id="reported_by" name="reported_by" type="text"
-                value={form.reported_by} onChange={handleChange}
-                placeholder="e.g. Capt. James Wilson"
-              />
-              {errors.reported_by && <span className="field-error">{errors.reported_by}</span>}
-            </div>
-            <div className={`form-field${errors.casualties ? ' has-error' : ''}`}>
-              <label htmlFor="casualties">Casualties</label>
-              <input
-                id="casualties" name="casualties" type="number"
-                min="0" value={form.casualties} onChange={handleChange}
-              />
-              {errors.casualties && <span className="field-error">{errors.casualties}</span>}
-            </div>
-            <div className="form-field">
-              <label htmlFor="damage_estimate">Damage Estimate (optional)</label>
-              <input
-                id="damage_estimate" name="damage_estimate" type="text"
-                value={form.damage_estimate} onChange={handleChange}
-                placeholder="e.g. $250,000"
-              />
+          <div className="form-section-body">
+            <div className="form-grid">
+              <div className="fg fg-full">
+                <label><span className="col-ref">15.</span> Follow Up Messages</label>
+                <textarea name="follow_up" value={form.follow_up} onChange={handleChange} rows={3}
+                  placeholder="Follow-up details, updates, responses…" />
+              </div>
+              <div className="fg">
+                <label><span className="col-ref">16.</span> Status</label>
+                <select name="status" value={form.status} onChange={handleChange}>
+                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
             </div>
           </div>
         </div>
