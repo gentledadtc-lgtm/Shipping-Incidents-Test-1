@@ -7,7 +7,7 @@ if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 const dbPath = path.join(dataDir, 'incidents.json');
 
 const STATUSES = ['Submitted', 'DPA Ack.', 'Fleet Mgr Review', 'Mgmt Review', 'Safety Inv.', 'Closed'];
-const FLEETS   = ['Fleet A', 'Fleet B', 'Fleet C', 'Fleet D', 'Fleet E'];
+const FLEETS   = ['Fleet 1', 'Fleet 2', 'Fleet 3', 'Fleet 4', 'Fleet 5'];
 
 const SEED = [
   {

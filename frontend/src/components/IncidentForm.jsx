@@ -1,26 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { fetchIncident, createIncident, updateIncident } from '../api/incidents.js';
+import Attachments from './Attachments.jsx';
 import './IncidentForm.css';
 
 const INCIDENT_TYPES = [
   'Grounding', 'Collision', 'Fire / Explosion', 'Crew Injury', 'Cargo Damage',
   'Pollution / Spill', 'Loss of Power / Blackout', 'Near Miss', 'Security Incident',
-  'Weather Damage', 'Navigation Incident', 'Equipment Failure',
-  'Environmental / Inspection', 'Other',
+  'Weather Damage', 'Navigation Incident', 'Machinery / Equipment Failure',
+  'Environmental / Inspection', 'Alcohol Violation', 'Other',
 ];
 
-const STATUSES = [
-  'Submitted', 'DPA Ack.', 'Fleet Mgr Review', 'Mgmt Review', 'Safety Inv.', 'Closed',
-];
+const STATUSES = ['Open', 'Pending OM Notification', 'Closed'];
 
-const FLEETS = ['Fleet A', 'Fleet B', 'Fleet C', 'Fleet D', 'Fleet E'];
+const FLEETS = ['Fleet 1', 'Fleet 2', 'Fleet 3', 'Fleet 4', 'Fleet 5'];
 
 const EMPTY_FORM = {
   vessel_name: '', date_of_event: '', date_of_reporting: '', incident_type: '',
   location: '', charterer: '', cargo: '', last_port: '', next_port: '',
   nature: '', action_plan: '', oil_informed: '', oil_which: '',
-  follow_up: '', status: 'Submitted', fleet: '',
+  follow_up: '', status: 'Open', fleet: '', remarks: '',
+  machinery_name: '', machinery_failure_type: '', machinery_failure_desc: '', machinery_repair_status: '',
+  docmap_reported: '',
 };
 
 function calcDiff(eventDate, reportDate) {
@@ -62,8 +63,14 @@ export default function IncidentForm({ role }) {
         oil_informed:      inc.oil_informed      || '',
         oil_which:         inc.oil_which         || '',
         follow_up:         inc.follow_up         || '',
-        status:            inc.status            || 'Submitted',
-        fleet:             inc.fleet             || '',
+        status:                 inc.status                 || 'Open',
+        fleet:                  inc.fleet                  || '',
+        remarks:                inc.remarks                || '',
+        machinery_name:         inc.machinery_name         || '',
+        machinery_failure_type: inc.machinery_failure_type || '',
+        machinery_failure_desc: inc.machinery_failure_desc || '',
+        machinery_repair_status:inc.machinery_repair_status|| '',
+        docmap_reported:        inc.docmap_reported        || '',
       }))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -169,6 +176,49 @@ export default function IncidentForm({ role }) {
                 {errors.incident_type && <span className="field-error">{errors.incident_type}</span>}
               </div>
 
+              {form.incident_type === 'Machinery / Equipment Failure' && (
+                <div className="fg fg-full machinery-panel">
+                  <div className="machinery-panel-title">Machinery / Equipment Details</div>
+                  <div className="form-grid machinery-grid">
+                    <div className="fg">
+                      <label>Machinery / Equipment Name</label>
+                      <input name="machinery_name" type="text" value={form.machinery_name} onChange={handleChange}
+                        placeholder="e.g. Main Engine, Aux Generator, Steering Gear…" />
+                    </div>
+                    <div className="fg">
+                      <label>Type of Failure</label>
+                      <select name="machinery_failure_type" value={form.machinery_failure_type} onChange={handleChange}>
+                        <option value="">Select…</option>
+                        <option>Mechanical</option>
+                        <option>Electrical</option>
+                        <option>Hydraulic</option>
+                        <option>Pneumatic</option>
+                        <option>Structural</option>
+                        <option>Software / Control System</option>
+                        <option>Other</option>
+                      </select>
+                    </div>
+                    <div className="fg">
+                      <label>Repair Status</label>
+                      <select name="machinery_repair_status" value={form.machinery_repair_status} onChange={handleChange}>
+                        <option value="">Select…</option>
+                        <option>Under Investigation</option>
+                        <option>Temporary Repair</option>
+                        <option>Permanent Repair</option>
+                        <option>Deferred to Next Port</option>
+                        <option>Completed</option>
+                      </select>
+                    </div>
+                    <div className="fg fg-full">
+                      <label>Failure Description</label>
+                      <textarea name="machinery_failure_desc" value={form.machinery_failure_desc} onChange={handleChange}
+                        rows={3} placeholder="Describe the nature of the machinery/equipment failure…" />
+                    </div>
+                  </div>
+                  {isEdit && <Attachments incidentId={id} section="machinery" label="Machinery Attachments" />}
+                </div>
+              )}
+
               <div className={`fg${errors.location ? ' has-error' : ''}`}>
                 <label><span className="col-ref">6.</span> Present Location <span className="req">*</span></label>
                 <input name="location" type="text" value={form.location} onChange={handleChange} placeholder="e.g. Cristobal, Panama" />
@@ -216,6 +266,7 @@ export default function IncidentForm({ role }) {
               </div>
 
             </div>
+            {isEdit && <Attachments incidentId={id} section="initial" label="Initial Notification Attachments" />}
           </div>
         </div>
 
@@ -246,6 +297,7 @@ export default function IncidentForm({ role }) {
                   placeholder="e.g. Chevron, Ampol, BP" disabled={oilLocked} />
               </div>
             </div>
+            {isEdit && <Attachments incidentId={id} section="oil_major" label="Oil Major Attachments" />}
           </div>
         </div>
 
@@ -268,9 +320,42 @@ export default function IncidentForm({ role }) {
                   {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
+              <div className="fg">
+                <label>Report Made in Docmap</label>
+                <select name="docmap_reported" value={form.docmap_reported} onChange={handleChange}>
+                  <option value="">Select…</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </div>
             </div>
+            {isEdit && <Attachments incidentId={id} section="follow_up" label="Follow Up Attachments" />}
           </div>
         </div>
+
+        {/* ── Remarks ── */}
+        <div className="form-section">
+          <div className="form-section-hdr">
+            Remarks
+            <span className="sec-badge">All Users · Optional</span>
+          </div>
+          <div className="form-section-body">
+            <div className="form-grid">
+              <div className="fg fg-full">
+                <label>Free-text Remarks</label>
+                <textarea name="remarks" value={form.remarks} onChange={handleChange} rows={3}
+                  placeholder="Any additional notes, observations or context…" />
+              </div>
+            </div>
+            {isEdit && <Attachments incidentId={id} section="remarks" label="Remarks Attachments" />}
+          </div>
+        </div>
+
+        {!isEdit && (
+          <div className="attach-new-note">
+            📎 You can add attachments after saving the incident.
+          </div>
+        )}
 
         <div className="form-actions">
           <button type="submit" className="btn btn-primary" disabled={saving}>

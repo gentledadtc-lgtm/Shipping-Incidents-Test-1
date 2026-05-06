@@ -1,33 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { fetchIncidents } from '../api/incidents.js';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+import { fetchIncidents, exportIncidentsUrl, importIncidents, templateUrl, deleteIncident } from '../api/incidents.js';
 import './IncidentList.css';
 
 const INCIDENT_TYPES = [
   'Grounding', 'Collision', 'Fire / Explosion', 'Crew Injury', 'Cargo Damage',
   'Pollution / Spill', 'Loss of Power / Blackout', 'Near Miss', 'Security Incident',
-  'Weather Damage', 'Navigation Incident', 'Equipment Failure',
-  'Environmental / Inspection', 'Other',
+  'Weather Damage', 'Navigation Incident', 'Machinery / Equipment Failure',
+  'Environmental / Inspection', 'Alcohol Violation', 'Other',
 ];
 
-const STATUSES = [
-  'Submitted', 'DPA Ack.', 'Fleet Mgr Review', 'Mgmt Review', 'Safety Inv.', 'Closed',
-];
+const STATUSES = ['Open', 'Pending OM Notification', 'Closed'];
 
-const FLEETS = ['Fleet A', 'Fleet B', 'Fleet C', 'Fleet D', 'Fleet E'];
+const FLEETS = ['Fleet 1', 'Fleet 2', 'Fleet 3', 'Fleet 4', 'Fleet 5'];
 
 const PAGE_SIZE = 15;
 
 function statusBadgeClass(s) {
-  const map = {
-    'Submitted':       'submitted',
-    'DPA Ack.':        'dpaack',
-    'Fleet Mgr Review':'fleetmgr',
-    'Mgmt Review':     'mgmt',
-    'Safety Inv.':     'safety',
-    'Closed':          'closed',
-  };
-  return map[s] || 'submitted';
+  if (s === 'Closed') return 'closed';
+  if (s === 'Pending OM Notification') return 'pending-om';
+  return 'open';
 }
 
 function formatDate(d) {
@@ -35,15 +28,33 @@ function formatDate(d) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-const EMPTY_FILTERS = { search: '', status: '', incident_type: '', fleet: '', date_from: '', date_to: '' };
+const EMPTY_FILTERS = { search: '', status: '', incident_type: '', fleet: '', date_from: '', date_to: '', oil_pending: '' };
 
-export default function IncidentList() {
+export default function IncidentList({ role }) {
+  const location = useLocation();
+
+  const initialFilters = useMemo(() => {
+    const p = new URLSearchParams(location.search);
+    return {
+      ...EMPTY_FILTERS,
+      status:        p.get('status')        || '',
+      oil_pending:   p.get('oil_pending')   || '',
+      incident_type: p.get('incident_type') || '',
+      fleet:         p.get('fleet')         || '',
+      date_from:     p.get('date_from')     || '',
+      date_to:       p.get('date_to')       || '',
+    };
+  }, []); // only on first mount
+
   const [incidents, setIncidents] = useState([]);
-  const [filters, setFilters]     = useState(EMPTY_FILTERS);
-  const [applied, setApplied]     = useState(EMPTY_FILTERS);
+  const [filters, setFilters]     = useState(initialFilters);
+  const [applied, setApplied]     = useState(initialFilters);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
   const [page, setPage]           = useState(1);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState(null);
+  const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
   const load = useCallback((f) => {
@@ -64,6 +75,68 @@ export default function IncidentList() {
   function handleApply(e) { e.preventDefault(); setApplied(filters); }
   function handleReset() { setFilters(EMPTY_FILTERS); setApplied(EMPTY_FILTERS); }
 
+  function handleExport() {
+    const url = exportIncidentsUrl(applied);
+    const a   = document.createElement('a');
+    a.href    = url;
+    a.download = '';
+    a.click();
+  }
+
+  function handleTemplate() {
+    const a = document.createElement('a');
+    a.href = templateUrl();
+    a.download = '';
+    a.click();
+  }
+
+  async function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setImportMsg(null);
+    setImporting(true);
+    try {
+      const buf  = await file.arrayBuffer();
+      const wb   = XLSX.read(buf, { cellDates: true, raw: false });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      // Skip guide rows (rows 2-3 in the template) — keep only rows after header
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      const data = rows.filter(r => {
+        const v = r['Vessel Name'] || r['Vessel Name *'] || r.vessel_name || '';
+        return v && !v.toString().startsWith('[');
+      });
+      if (data.length === 0) throw new Error('No data rows found. Make sure to use the provided template and delete the guide/example rows.');
+      // Normalise starred header names from template
+      const normalised = data.map(r => {
+        const n = {};
+        Object.entries(r).forEach(([k, v]) => { n[k.replace(' *', '')] = v; });
+        return n;
+      });
+      const result = await importIncidents(normalised);
+      setImportMsg({
+        type: 'success',
+        text: `Imported ${result.created} incident${result.created !== 1 ? 's' : ''}${result.skipped ? ` · ${result.skipped} skipped (missing required fields)` : ''}.`,
+      });
+      load(applied);
+    } catch (err) {
+      setImportMsg({ type: 'error', text: err.message });
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleDelete(e, incId) {
+    e.stopPropagation();
+    if (!confirm('Delete this incident? This cannot be undone.')) return;
+    try {
+      await deleteIncident(incId);
+      load(applied);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(incidents.length / PAGE_SIZE));
   const paged      = incidents.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -74,8 +147,32 @@ export default function IncidentList() {
           <h1 className="page-title">Incident History</h1>
           <p className="page-subtitle">{incidents.length} incident{incidents.length !== 1 ? 's' : ''} found</p>
         </div>
-        <Link to="/incidents/new" className="btn btn-primary">+ Report Incident</Link>
+        <div className="header-actions">
+          <button className="btn btn-secondary" onClick={handleTemplate} title="Download blank import template (.xlsx)">
+            📋 Template
+          </button>
+          <button className="btn btn-secondary" onClick={handleExport} title="Download visible incidents as Excel">
+            ⬇ Export Excel
+          </button>
+          <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={importing} title="Import incidents from Excel file">
+            {importing ? 'Importing…' : '⬆ Import Excel'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+          <Link to="/incidents/new" className="btn btn-primary">+ Report Incident</Link>
+        </div>
       </div>
+      {importMsg && (
+        <div className={`import-msg import-msg-${importMsg.type}`}>
+          {importMsg.text}
+          <button className="import-msg-close" onClick={() => setImportMsg(null)}>&#10005;</button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card filter-card">
@@ -150,14 +247,16 @@ export default function IncidentList() {
                     <th>Location</th>
                     <th>Fleet</th>
                     <th>Charterer</th>
+                    <th>Oil Majors Informed</th>
                     <th>Status</th>
+                    <th>Reported in Docmap</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paged.map(inc => (
+                  {paged.map((inc, idx) => (
                     <tr key={inc.id} className="clickable-row" onClick={() => navigate(`/incidents/${inc.id}`)}>
-                      <td className="id-cell">#{inc.id}</td>
+                      <td className="id-cell">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                       <td className="vessel-cell">{inc.vessel_name}</td>
                       <td className="nowrap">{formatDate(inc.date_of_event)}</td>
                       <td className="nowrap">{formatDate(inc.date_of_reporting)}</td>
@@ -166,11 +265,25 @@ export default function IncidentList() {
                       <td className="location-cell">{inc.location}</td>
                       <td className="nowrap">{inc.fleet || '—'}</td>
                       <td>{inc.charterer || '—'}</td>
+                      <td className="om-cell">
+                        {inc.oil_informed === 'Yes'
+                          ? <span className="om-yes" title={inc.oil_which || 'Yes'}>{inc.oil_which || 'Yes'}</span>
+                          : <span className="om-no">{inc.oil_informed === 'No' ? 'No' : '—'}</span>}
+                      </td>
                       <td>
                         <span className={`badge badge-${statusBadgeClass(inc.status)}`}>{inc.status}</span>
                       </td>
+                      <td className="nowrap">{inc.docmap_reported || '—'}</td>
                       <td onClick={e => e.stopPropagation()}>
                         <Link to={`/incidents/${inc.id}`} className="btn btn-secondary btn-sm">View</Link>
+                        {role === 'admin' && (
+                          <button
+                            className="btn btn-danger btn-sm"
+                            style={{ marginLeft: '6px' }}
+                            onClick={e => handleDelete(e, inc.id)}
+                            title="Delete incident"
+                          >🗑</button>
+                        )}
                       </td>
                     </tr>
                   ))}

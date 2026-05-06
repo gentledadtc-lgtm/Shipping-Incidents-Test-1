@@ -1,18 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { fetchIncident, deleteIncident } from '../api/incidents.js';
+import { fetchIncident, deleteIncident, publishIncident } from '../api/incidents.js';
+import Attachments from './Attachments.jsx';
 import './IncidentDetail.css';
 
 function statusBadgeClass(s) {
-  const map = {
-    'Submitted':       'submitted',
-    'DPA Ack.':        'dpaack',
-    'Fleet Mgr Review':'fleetmgr',
-    'Mgmt Review':     'mgmt',
-    'Safety Inv.':     'safety',
-    'Closed':          'closed',
-  };
-  return map[s] || 'submitted';
+  if (s === 'Closed') return 'closed';
+  if (s === 'Pending OM Notification') return 'pending-om';
+  return 'open';
 }
 
 function formatDate(d) {
@@ -42,6 +37,8 @@ export default function IncidentDetail({ role }) {
   const [error, setError]           = useState(null);
   const [deleting, setDeleting]     = useState(false);
   const [confirmDelete, setConfirm] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishMsg, setPublishMsg] = useState(null);
 
   useEffect(() => {
     fetchIncident(id)
@@ -49,6 +46,29 @@ export default function IncidentDetail({ role }) {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  async function handlePublish() {
+    setPublishing(true);
+    setPublishMsg(null);
+    try {
+      const result = await publishIncident(id);
+      setIncident(result.incident);
+      const emailOk = !result.notifications?.email?.error && !result.notifications?.email?.skipped;
+      const teamsOk = !result.notifications?.teams?.error && !result.notifications?.teams?.skipped;
+      const parts = [];
+      if (emailOk) parts.push('email sent');
+      else if (result.notifications?.email?.skipped) parts.push('email not configured');
+      else parts.push('email failed');
+      if (teamsOk) parts.push('Teams notified');
+      else if (result.notifications?.teams?.skipped) parts.push('Teams not configured');
+      else parts.push('Teams failed');
+      setPublishMsg({ type: 'success', text: `Published. ${parts.join(' · ')}.` });
+    } catch (e) {
+      setPublishMsg({ type: 'error', text: e.message });
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   async function handleDelete() {
     if (!confirmDelete) { setConfirm(true); return; }
@@ -124,7 +144,27 @@ export default function IncidentDetail({ role }) {
               <Field label="10. Next Port / ETA"  value={incident.next_port} />
               <Field label="Fleet"                value={incident.fleet} />
             </div>
+            <Attachments incidentId={incident.id} section="initial" label="Initial Notification Attachments" />
           </div>
+
+          {/* Machinery / Equipment Details — conditional */}
+          {incident.incident_type === 'Machinery / Equipment Failure' && (
+            <div className="card detail-section machinery-detail-panel">
+              <h2 className="section-heading">Machinery / Equipment Details</h2>
+              <div className="detail-grid">
+                <Field label="Machinery / Equipment Name" value={incident.machinery_name} />
+                <Field label="Type of Failure"            value={incident.machinery_failure_type} />
+                <Field label="Repair Status"              value={incident.machinery_repair_status} />
+              </div>
+              {incident.machinery_failure_desc && (
+                <div className="detail-field" style={{marginTop:'12px'}}>
+                  <span className="detail-label">Failure Description</span>
+                  <p className="detail-text">{incident.machinery_failure_desc}</p>
+                </div>
+              )}
+              <Attachments incidentId={incident.id} section="machinery" label="Machinery Attachments" />
+            </div>
+          )}
 
           {/* Cols 11–12: Nature & Action Plan */}
           <div className="card detail-section">
@@ -139,6 +179,7 @@ export default function IncidentDetail({ role }) {
                 <p className="detail-text">{incident.action_plan || '—'}</p>
               </div>
             </div>
+            <Attachments incidentId={incident.id} section="nature" label="Nature & Action Plan Attachments" />
           </div>
 
           {/* Cols 13–14: Oil Majors (shown to all, editable only by vetting) */}
@@ -148,6 +189,7 @@ export default function IncidentDetail({ role }) {
               <Field label="13. Oil Major Informed?" value={incident.oil_informed} />
               <Field label="14. Which Oil Majors"    value={incident.oil_which} />
             </div>
+            <Attachments incidentId={incident.id} section="oil_major" label="Oil Major Attachments" />
           </div>
 
           {/* Cols 15–16: Follow Up & Status */}
@@ -159,7 +201,16 @@ export default function IncidentDetail({ role }) {
                 <p className="detail-text">{incident.follow_up || 'No follow-ups yet.'}</p>
               </div>
               <Field label="16. Status" value={incident.status} />
+              <Field label="Report Made in Docmap" value={incident.docmap_reported} />
             </div>
+            <Attachments incidentId={incident.id} section="follow_up" label="Follow Up Attachments" />
+          </div>
+
+          {/* Remarks */}
+          <div className="card detail-section">
+            <h2 className="section-heading">Remarks</h2>
+            <p className="detail-text">{incident.remarks || 'No remarks.'}</p>
+            <Attachments incidentId={incident.id} section="remarks" label="Remarks Attachments" />
           </div>
 
           {/* Record info */}
@@ -211,14 +262,37 @@ export default function IncidentDetail({ role }) {
           <div className="card sidebar-card">
             <h2 className="sidebar-heading">Actions</h2>
             <div className="action-btns">
+              {incident.published ? (
+                <div className="publish-done">
+                  <span className="publish-check">&#10003;</span> Published
+                  {incident.published_at && (
+                    <div className="publish-ts">{formatDateTime(incident.published_at)}</div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  className="btn btn-publish action-btn"
+                  onClick={handlePublish}
+                  disabled={publishing}
+                >
+                  {publishing ? 'Publishing…' : '📢 Publish & Notify'}
+                </button>
+              )}
+              {publishMsg && (
+                <div className={`publish-msg publish-msg-${publishMsg.type}`}>{publishMsg.text}</div>
+              )}
               <Link to={`/incidents/${incident.id}/edit`} className="btn btn-primary action-btn">
                 &#9998;&nbsp; Edit Incident
               </Link>
-              <button className="btn btn-danger action-btn" onClick={handleDelete} disabled={deleting}>
-                {deleting ? 'Deleting…' : confirmDelete ? 'Confirm Delete' : '&#128465;&nbsp; Delete'}
-              </button>
-              {confirmDelete && !deleting && (
-                <button className="btn btn-secondary action-btn" onClick={() => setConfirm(false)}>Cancel</button>
+              {role === 'admin' && (
+                <>
+                  <button className="btn btn-danger action-btn" onClick={handleDelete} disabled={deleting}>
+                    {deleting ? 'Deleting…' : confirmDelete ? 'Confirm Delete' : '🗑 Delete'}
+                  </button>
+                  {confirmDelete && !deleting && (
+                    <button className="btn btn-secondary action-btn" onClick={() => setConfirm(false)}>Cancel</button>
+                  )}
+                </>
               )}
             </div>
             {confirmDelete && <p className="delete-warning">This action cannot be undone.</p>}

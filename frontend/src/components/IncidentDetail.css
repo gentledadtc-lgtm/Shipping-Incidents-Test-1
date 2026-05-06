@@ -142,6 +142,41 @@
 .action-btn  { width: 100%; justify-content: center; }
 .delete-warning { margin-top: 0.4rem; font-size: 0.75rem; color: var(--error); text-align: center; }
 
+/* Publish button */
+.btn-publish {
+  background: #16a34a;
+  color: white;
+  border: none;
+}
+.btn-publish:hover:not(:disabled) { background: #15803d; }
+.btn-publish:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.publish-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.5rem;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #15803d;
+  text-align: center;
+}
+.publish-check { font-size: 1rem; }
+.publish-ts { font-size: 0.72rem; font-weight: 400; color: #6b7280; }
+
+.publish-msg {
+  font-size: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 5px;
+  text-align: center;
+}
+.publish-msg-success { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+.publish-msg-error   { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+
 @media (max-width: 900px) {
   .detail-body { grid-template-columns: 1fr; }
   .detail-sidebar { order: -1; }

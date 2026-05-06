@@ -51,3 +51,35 @@ export async function deleteIncident(id) {
   if (!res.ok) throw new Error('Failed to delete incident');
   return res.json();
 }
+
+export async function publishIncident(id) {
+  const res = await fetch(`${BASE}/${id}/publish`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to publish incident');
+  }
+  return res.json();
+}
+
+export function exportIncidentsUrl(filters = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => { if (v) params.append(k, v); });
+  return `${BASE}/export?${params}`;
+}
+
+export function templateUrl() {
+  return `${BASE}/template`;
+}
+
+export async function importIncidents(rows) {
+  const res = await fetch(`${BASE}/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rows),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Import failed');
+  }
+  return res.json();
+}

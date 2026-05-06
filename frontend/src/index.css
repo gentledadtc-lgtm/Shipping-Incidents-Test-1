@@ -71,12 +71,9 @@ input, select, textarea { font-family: inherit; }
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
-.badge-submitted  { background: rgba(239,68,68,0.12);   color: var(--s-submitted); }
-.badge-dpaack     { background: rgba(197,165,114,0.18); color: #8a6a2e; }
-.badge-fleetmgr   { background: rgba(107,114,128,0.12); color: var(--s-fleet); }
-.badge-mgmt       { background: rgba(37,99,235,0.12);   color: var(--s-mgmt); }
-.badge-safety     { background: rgba(217,119,6,0.12);   color: var(--s-safety); }
+.badge-open       { background: rgba(245,158,11,0.15);  color: #b45309; }
 .badge-closed     { background: rgba(0,51,102,0.12);    color: var(--s-closed); }
+.badge-pending-om { background: rgba(239,68,68,0.12);   color: #dc2626; }
 
 /* ── Card ── */
 .card {
